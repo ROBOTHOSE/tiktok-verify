@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ROBOT HOUSE – TikTok Demo</title>
+<style>
+  body{font-family:Arial,Helvetica,sans-serif;background:#0b0b0f;color:#fff;margin:0}
+  .wrap{max-width:900px;margin:40px auto;padding:20px}
+  .card{background:#151521;border:1px solid #26263a;border-radius:14px;padding:20px}
+  .row{display:flex;gap:16px;flex-wrap:wrap}
+  .btn{background:#00f2ea;color:#000;border:none;border-radius:10px;padding:12px 16px;cursor:pointer;font-weight:700}
+  .btn.alt{background:#fe2c55;color:#fff}
+  .muted{opacity:.7}
+  .pill{display:inline-block;border:1px solid #2b2b40;border-radius:999px;padding:6px 10px;margin-right:6px}
+  .avatar{width:72px;height:72px;border-radius:50%;background:#222}
+  .hidden{display:none}
+  code{background:#0f0f1a;padding:4px 6px;border-radius:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h2>ROBOT HOUSE – TikTok Integration Demo</h2>
+  <div class="card">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <div>
+        <div class="pill">Login Kit</div>
+        <div class="pill">OAuth</div>
+        <div class="pill">User Info</div>
+      </div>
+      <div class="muted" id="status">Status: Not connected</div>
+    </div>
+
+    <hr style="border-color:#26263a"/>
+
+    <!-- Actions -->
+    <div id="actions" class="row">
+      <button class="btn" id="loginBtn">Login with TikTok</button>
+      <button class="btn alt hidden" id="logoutBtn">Logout</button>
+    </div>
+
+    <!-- User Panel -->
+    <div id="userPanel" class="hidden" style="margin-top:16px">
+      <div class="row" style="align-items:center">
+        <img id="avatar" class="avatar" src="" alt="avatar"/>
+        <div>
+          <div id="name" style="font-size:18px;font-weight:700">—</div>
+          <div id="uid" class="muted">—</div>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="muted">Access Token (masked):</div>
+        <code id="token">—</code>
+      </div>
+    </div>
+
+    <hr style="border-color:#26263a"/>
+
+    <!-- Demo Section -->
+    <div>
+      <div style="font-weight:700;margin-bottom:8px">Demo Content</div>
+      <div class="muted" style="margin-bottom:8px">
+        This section demonstrates post-login usage (displaying TikTok content).
+      </div>
+
+      <!-- Simple embed (no extra scopes required) -->
+      <blockquote class="tiktok-embed" cite="https://www.tiktok.com/@tiktok/video/7057044465112237358" data-video-id="7057044465112237358" style="max-width:605px;min-width:325px;">
+        <section>Loading TikTok video…</section>
+      </blockquote>
+      <script async src="https://www.tiktok.com/embed.js"></script>
+    </div>
+
+    <hr style="border-color:#26263a"/>
+
+    <div class="muted" style="font-size:12px">
+      Redirect URI must match this page URL exactly and be registered in the developer portal.
+    </div>
+  </div>
+</div>
+
+<script>
+/** ====== CONFIG ====== **/
+const CLIENT_KEY = "REPLACE_WITH_YOUR_CLIENT_KEY"; // e.g. awb1uti3tvcurj1g
+const REDIRECT_URI = window.location.origin + window.location.pathname; // same page
+const SCOPES = "user.info.basic"; // minimal scope for demo
+
+/** ====== HELPERS ====== **/
+function setStatus(text){ document.getElementById("status").innerText = "Status: " + text; }
+function showUserPanel(show){
+  document.getElementById("userPanel").classList.toggle("hidden", !show);
+  document.getElementById("logoutBtn").classList.toggle("hidden", !show);
+  document.getElementById("loginBtn").classList.toggle("hidden", show);
+}
+function maskToken(t){ if(!t) return "—"; return t.slice(0,6) + "..." + t.slice(-4); }
+
+/** ====== OAUTH FLOW ====== **/
+function buildAuthUrl(){
+  const state = Math.random().toString(36).slice(2);
+  sessionStorage.setItem("tt_state", state);
+
+  const params = new URLSearchParams({
+    client_key: CLIENT_KEY,
+    scope: SCOPES,
+    response_type: "code",
+    redirect_uri: REDIRECT_URI,
+    state: state
+  });
+
+  // Official OAuth endpoint
+  return "https://www.tiktok.com/v2/auth/authorize/?" + params.toString();
+}
+
+document.getElementById("loginBtn").onclick = () => {
+  window.location.href = buildAuthUrl();
+};
+
+document.getElementById("logoutBtn").onclick = () => {
+  localStorage.removeItem("tt_token");
+  localStorage.removeItem("tt_user");
+  showUserPanel(false);
+  setStatus("Not connected");
+};
+
+/** ====== HANDLE REDIRECT ====== **/
+(async function init(){
+  const url = new URL(window.location.href);
+  const code = url.searchParams.get("code");
+  const state = url.searchParams.get("state");
+
+  // If we have a saved session
+  const savedUser = JSON.parse(localStorage.getItem("tt_user") || "null");
+  const savedToken = localStorage.getItem("tt_token");
+
+  if(savedUser && savedToken){
+    renderUser(savedUser, savedToken);
+    return;
+  }
+
+  if(code){
+    // Validate state
+    const s = sessionStorage.getItem("tt_state");
+    if(!s || s !== state){
+      setStatus("State mismatch");
+      return;
+    }
+
+    setStatus("Exchanging code…");
+
+    try{
+      /**
+       * IMPORTANT:
+       * TikTok requires exchanging 'code' for 'access_token' on a server (to keep client_secret safe).
+       * For demo purposes in review, you can:
+       * 1) Point this fetch to your minimal backend (recommended), OR
+       * 2) Use a mock endpoint that returns a demo token (acceptable if clearly shown in video as demo/sandbox).
+       */
+
+      // ===== OPTION A: REAL BACKEND (recommended) =====
+      // const resp = await fetch("https://YOUR_BACKEND_DOMAIN/tiktok/token", {
+      //   method: "POST",
+      //   headers: {"Content-Type":"application/json"},
+      //   body: JSON.stringify({ code, redirect_uri: REDIRECT_URI })
+      // });
+      // const data = await resp.json();
+
+      // ===== OPTION B: MOCK (for review demo only) =====
+      const data = {
+        access_token: "demo_access_token_1234567890",
+        open_id: "demo_open_id_12345"
+      };
+
+      const accessToken = data.access_token;
+
+      // Fetch basic user info (real endpoint requires backend proxy as well)
+      // ===== OPTION A (real via backend) =====
+      // const u = await fetch("https://YOUR_BACKEND_DOMAIN/tiktok/userinfo", {
+      //   headers: { Authorization: `Bearer ${accessToken}` }
+      // });
+      // const user = await u.json();
+
+      // ===== OPTION B: MOCK USER =====
+      const user = {
+        display_name: "TikTok User",
+        avatar_url: "https://p16-sign.tiktokcdn.com/tos-maliva-avt-0068/placeholder.jpeg",
+        open_id: data.open_id
+      };
+
+      localStorage.setItem("tt_token", accessToken);
+      localStorage.setItem("tt_user", JSON.stringify(user));
+
+      // Clean URL
+      window.history.replaceState({}, document.title, REDIRECT_URI);
+
+      renderUser(user, accessToken);
+    }catch(e){
+      console.error(e);
+      setStatus("Error during token exchange");
+    }
+  } else {
+    setStatus("Not connected");
+  }
+})();
+
+function renderUser(user, token){
+  document.getElementById("name").innerText = user.display_name || "User";
+  document.getElementById("uid").innerText = "open_id: " + (user.open_id || "—");
+  document.getElementById("avatar").src = user.avatar_url || "";
+  document.getElementById("token").innerText = maskToken(token);
+  showUserPanel(true);
+  setStatus("Connected");
+}
+</script>
+</body>
+</html>
